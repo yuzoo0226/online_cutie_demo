@@ -1,0 +1,112 @@
+Bootstrap: docker
+From: nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
+Stage: build
+
+%setup
+    ############################################
+    # setup. コンテナ外で行われるコマンド
+    ############################################
+
+%files
+    ############################################
+    # files ファイルのマウント
+    ############################################
+    ./entrypoint.sh /
+    ./requirements.txt /
+
+%environment
+    ############################################
+    # enviroments 環境変数の定義
+    ############################################
+    export TZ=Asia/Tokyo 
+    export LC_ALL=C
+
+%post
+    ############################################
+    # post ファイルのダウロードとか，色々．基本的にここに書く
+    ############################################
+    # aptでインストールする場合，入力待ちを避けるために下記のように書く
+    # DEBIAN_FRONTEND=noninteractive && apt install -y hogehoge ...
+
+    # essential
+    apt update
+    DEBIAN_FRONTEND=noninteractive apt install -y lsb-release wget curl git nano gnupg build-essential software-properties-common
+    mkdir -p /run/user/1000
+    mkdir -p /var/lib/dbus
+    
+    # avoid freezing
+    DEBIAN_FRONTEND=noninteractive apt install -y tzdata keyboard-configuration
+
+    # venvに切り替え
+    DEBIAN_FRONTEND=noninteractive apt update && apt install -y \
+        python3.10 \
+        python3.10-venv \
+        python3.10-dev \
+        python3-pip \
+        build-essential \
+        git \
+        wget && \
+        apt clean && rm -rf /var/lib/apt/lists/*
+
+    DEBIAN_FRONTEND=noninteractive apt update && apt install -y qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools
+    DEBIAN_FRONTEND=noninteractive apt update && apt install -y x11-apps
+    DEBIAN_FRONTEND=noninteractive apt update && apt install -y jupyter-core jupyter-notebook
+
+    DEBIAN_FRONTEND=noninteractive apt update && apt install -y libxcb-cursor0
+    DEBIAN_FRONTEND=noninteractive apt update && apt install -y libxcb-xinerama0 libxcb-icccm4 libxcb-image0 \
+        libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
+        libxcb-xfixes0 libxcb-sync1 libxcb-xinput0
+
+    # 仮想環境のディレクトリを作成
+    mkdir -p /opt/venv
+
+    # 仮想環境を作成
+    python3.10 -m venv /opt/venv
+
+    # 仮想環境を有効化してpipをアップグレード
+    . /opt/venv/bin/activate && \
+    pip install --upgrade pip setuptools wheel
+
+    # 必要なパッケージをインストール (例としてnumpyとpandas)
+    . /opt/venv/bin/activate && \
+    pip install numpy pandas
+
+    /opt/venv/bin/pip install tqdm
+    /opt/venv/bin/pip install -r requirements.txt
+    /opt/venv/bin/pip install torch==2.0.0 torchvision==0.15.1 torchaudio==2.0.1 --index-url https://download.pytorch.org/whl/cu118
+    /opt/venv/bin/pip install git+https://github.com/ChaoningZhang/MobileSAM.git
+
+    ln -sf /opt/venv/bin/python3 /usr/bin/python3
+    ln -sf /opt/venv/bin/python /usr/bin/python
+    ln -sf /opt/venv/bin/pip3 /usr/bin/pip3
+    ln -sf /opt/venv/bin/pip3 /usr/bin/pip
+
+    echo ". /opt/venv/bin/activate" >> /entrypoint.sh
+
+%runscript
+    ############################################
+    # runscript. singularity run で実行するコマンド
+    ############################################
+
+%startscript
+    ############################################
+    # startscript. singularity insntance startで実行するコマンド 
+    ############################################
+
+%test
+    ############################################
+    # test. テスト時に実行するコマンド
+    ############################################
+
+
+%labels
+    ############################################
+    # label. ラベル
+    ############################################
+    Author Yuga Yano
+    Version v0.0.1
+
+%help
+    ############################################
+    # help. ヘルプ
+    ############################################
