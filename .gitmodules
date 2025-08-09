@@ -1,3 +1,6 @@
 [submodule "third_party/MobileSAM"]
 	path = third_party/MobileSAM
 	url = git@github.com:ChaoningZhang/MobileSAM.git
+[submodule "third_party/cutie"]
+	path = third_party/cutie
+	url = git@github.com:hkchengrex/Cutie.git

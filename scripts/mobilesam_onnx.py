@@ -43,8 +43,7 @@ class MobileSAMOnnx:
         color = np.array(color_rgb, dtype=np.float32)[None, None, :]  # (1,1,3)
 
         # アルファブレンド: img*(1 - a*m) + color*(a*m)
-        overlay = image_rgb.astype(np.float32) * (1.0 - alpha * mask[..., None]) \
-                + color * (alpha * mask[..., None])
+        overlay = image_rgb.astype(np.float32) * (1.0 - alpha * mask[..., None]) + color * (alpha * mask[..., None])
         return np.clip(overlay, 0, 255).astype(np.uint8)
 
     def draw_input_points(self, image_rgb: np.ndarray, coords_xy: np.ndarray,
