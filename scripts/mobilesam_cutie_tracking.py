@@ -45,6 +45,58 @@ class MobilesamCutieTracking:
         self.sam.to(device='cpu')
         self.predictor = SamPredictor(self.sam)
 
+    @staticmethod
+    def cv2_to_pillow_mask(mask):
+        arr = mask.detach().cpu().numpy()
+
+        # 形状を (H, W) にする
+        if arr.ndim == 3:
+            # (1, H, W) -> (H, W)
+            if arr.shape[0] == 1:
+                arr = arr[0]
+            # (H, W, 1) -> (H, W)
+            elif arr.shape[2] == 1:
+                arr = arr[..., 0]
+            else:
+                # チャンネル次元が複数ある場合は最大スコア/先頭などに集約
+                # ここでは先頭チャンネルを使用（必要なら argmax に変更）
+                arr = arr[0]
+
+        # dtype 整形（bool -> 0/255、float -> 0/255）
+        if arr.dtype == np.bool_:
+            arr = arr.astype(np.uint8) * 255
+        else:
+            # 値域が [0,1] なら 0~255 へ
+            if arr.max() <= 1.0:
+                arr = (arr * 255).astype(np.uint8)
+            else:
+                arr = arr.astype(np.uint8)
+
+        return PILImage.fromarray(arr, mode="L")
+
+    @staticmethod
+    def cv2_to_pillow_image(cv_image: np.ndarray) -> PILImage:
+        if len(cv_image.shape) == 2:
+            return PILImage.fromarray(cv_image, mode='L')
+        elif len(cv_image.shape) == 3 and cv_image.shape[2] == 3:
+            rgb_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+            return PILImage.fromarray(rgb_image)
+        else:
+            raise ValueError("Unsupport Image type")
+
+    @staticmethod
+    def pillow_to_cv2(pil_img: PILImage) -> np.ndarray:
+        """Convert Pillow image to OpenCV BGR numpy array"""
+        img_np = np.array(pil_img)
+        if pil_img.mode == "RGBA":
+            return cv2.cvtColor(img_np, cv2.COLOR_RGBA2BGR)
+        elif pil_img.mode == "RGB":
+            return cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+        elif pil_img.mode == "L":
+            return img_np
+        else:
+            raise ValueError(f"Unsupported image mode: {pil_img.mode}")
+
     def make_overlay_image(self, pillow_mask, pillow_bgr, color=(0, 0, 255), alpha=0.5):
         cv_bgr = self.pillow_to_cv2(pillow_bgr)
         cv_mask = self.pillow_to_cv2(pillow_mask)
@@ -71,6 +123,8 @@ class MobilesamCutieTracking:
 
         return overlay
 
+    @torch.inference_mode()
+    @torch.cuda.amp.autocast()
     def run_webcam(self, camera_index=0, alpha=0.6, color_rgb=(30, 144, 255),
                    default_point="center", save_path="webcam_seg.png"):
         """
@@ -103,6 +157,7 @@ class MobilesamCutieTracking:
 
                 # BGR -> RGB
                 image_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+                target_pil_bgr = PILImage.fromarray(frame_bgr)
                 H, W = image_rgb.shape[:2]
 
                 # 入力点の決定
@@ -119,6 +174,7 @@ class MobilesamCutieTracking:
 
                 # SAM predictor で埋め込み
                 if self.is_tracking is False:
+                    self.processor.clear_memory()
                     self.predictor.set_image(image_rgb)
                     image_embedding = self.predictor.get_image_embedding().cpu().numpy()
 
@@ -170,6 +226,7 @@ class MobilesamCutieTracking:
                     torch_mask = torch.from_numpy(np.array(pil_mask)).cuda()
 
                     mask = self.processor.step(torch_rgb, torch_mask, objects=self.objects)
+                    self.is_tracking = True
 
                 else:
                     target_image = to_tensor(image_rgb).cuda().float()
@@ -177,18 +234,10 @@ class MobilesamCutieTracking:
                     mask = self.processor.output_prob_to_mask(output_prob)
 
                 try:
-                    estimation_mask = PILImage.fromarray(mask.cpu().numpy().astype(np.uint8))
-                    pil_rgb = estimation_mask.convert("RGB")
-                    cv_rgb = np.array(pil_rgb)
-                    cv_bgr = cv2.cvtColor(cv_rgb, cv2.COLOR_RGB2BGR)
-                    overlay_mask = self.make_overlay_image(pillow_mask=pil_rgb, pillow_bgr=self.target_pil_rgb)
+                    estimation_mask = self.cv2_to_pillow_mask(mask)
+                    pil_mask_rgb = estimation_mask.convert("RGB")
+                    overlay_mask = self.make_overlay_image(pillow_mask=pil_mask_rgb, pillow_bgr=target_pil_bgr)
 
-                    # # 重畳
-                    # seg_rgb = self.overlay_mask_on_image(image_rgb, mask_hw, color_rgb=color_rgb, alpha=alpha)
-                    # # 星マーカー描画
-                    # seg_with_points = self.draw_input_points(seg_rgb, input_point, input_label,
-                    #                                          marker_size=24, thickness=2)
-                    # 表示（RGB->BGR）
                     vis_bgr = cv2.cvtColor(overlay_mask, cv2.COLOR_RGB2BGR)
                     cv2.imshow("MobileSAM-ONNX Webcam", vis_bgr)
 
@@ -198,6 +247,7 @@ class MobilesamCutieTracking:
                     elif key == ord('s'):
                         cv2.imwrite(save_path, vis_bgr)
                         print(f"Saved: {save_path}")
+
                 except Exception as e:
                     cv2.imshow("MobileSAM-ONNX Webcam", cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR))
                     cv2.waitKey(1)
