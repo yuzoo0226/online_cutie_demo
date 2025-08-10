@@ -1,4 +1,4 @@
-# Human Gaze-based Attention map
+# Online [Cutie](https://github.com/hkchengrex/Cutie) Demo
 
 <!-- <video src="./io/mobilesam_cutie_demo.m4v" controls width="600"></video> -->
 [![デモ動画を見る](./io/teaser.png)](https://youtu.be/SMoJGquCu-E)
