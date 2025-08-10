@@ -1,6 +1,7 @@
 # Human Gaze-based Attention map
 
-<video src="./io/mobilesam_cutie_demo.m4v" controls width="600"></video>
+<!-- <video src="./io/mobilesam_cutie_demo.m4v" controls width="600"></video> -->
+[![デモ動画を見る](./io/teaser.png)](https://youtu.be/SMoJGquCu-E)
 
 ## How to clone
 
